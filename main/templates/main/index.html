@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>HWP 업로드 및 다운로드</title>
+</head>
+<body>
+    <h1>HWP 파일 업로드 후 처리 및 다운로드</h1>
+
+    {% if error %}
+        <p style="color:red;">{{ error }}</p>
+    {% endif %}
+
+    <form action="{% url 'transmit_hwp' %}" method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <label for="hwp_file">HWP 파일 선택:</label>
+        <input type="file" id="hwp_file" name="hwp_file" accept=".hwp,.hwpx">
+        <button type="submit">전송하고 다운로드</button>
+    </form>
+
+    <!-- AJAX 없이 일반 폼 제출: 브라우저가 FileResponse를 다운로드로 처리 -->
+</body>
+</html>
