@@ -276,7 +276,6 @@ def transmit_hwp(request):
         
         
         hwp_path = os.path.join(settings.BASE_DIR, 'main/static/final2.hwpx')
-        hwp.Open(hwp_path)
         return FileResponse(open(hwp_path, 'rb'), content_type='application/haansofthwp')
     # GET 요청: 업로드 폼 렌더링
     return render(request, 'main/index.html')
