@@ -26,7 +26,7 @@ SECRET_KEY = "django-insecure-v5yuqd&v&=bmb=32o3e%c!t2e_b#tabuv8b_1=)2@c@*zpgq59
 DEBUG = True
 
 STATIC_IP = os.getenv('STATIC_IP', '')
-ALLOWED_HOSTS = [STATIC_IP, 'localhost']
+ALLOWED_HOSTS = ['3.36.211.0', 'localhost']
 
 
 # Application definition
