@@ -1,5 +1,4 @@
 from langchain_teddynote.document_loaders import HWPLoader
-from langchain_community.llms import OpenAI
 from langchain_openai import ChatOpenAI
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
@@ -18,8 +17,6 @@ from langchain_community.vectorstores import FAISS
 from langchain.retrievers import EnsembleRetriever
 from pydantic import Field
 from typing import Any
-from langchain_community.llms import Ollama
-from langchain_community.embeddings import HuggingFaceEmbeddings
 
 class HyDERetriever(BaseRetriever):
     llm: Any = Field()
@@ -28,24 +25,31 @@ class HyDERetriever(BaseRetriever):
 
     def _get_relevant_documents(self, query: str, *, run_manager: CallbackManagerForRetrieverRun = None):
         prompt = f"""
-아래의 질문에 대해, 기업명과 사업자 등록번호가 포함된 가상의 사업계획서 요약을 작성하세요.
+당신은 정부 지원 사업계획서의 핵심 내용을 요약하는 AI 전문가입니다.
+아래 '질문'에 가장 잘 부합하는 가상의 사업계획서 핵심 내용(Hypothetical Document)을 생성해 주세요. 이 내용은 실제 사업계획서의 일부처럼 보여야 합니다.
 
 질문: {query}
 
-예시:
-기업명: ㈜예시컴퍼니
-사업자 등록번호: 123-45-67890
-지원 과제 요약: AI 기반 문서 자동화 솔루션 개발
-아이템 핵심 사항: 자연어처리, 문서 파싱, 자동화
+---
+**가상 사업계획서 생성 예시:**
 
-작성:
+**1. 신청 현황**
+  - **기업명:** (주)테크이노베이션
+  - **대표자명:** 김혁신
+  - **사업자등록번호:** 123-45-67890
+  - **담당자:** 이노아
+  - **연락처:** 010-1234-5678
+
+**2. 과제 개요**
+  - **지원 과제명:** 빅데이터 기반 실시간 수요 예측 및 자동 발주 시스템 개발
+  - **핵심 아이템:** AI 수요 예측 솔루션
+  - **기술 요약:** 머신러닝(LSTM) 모델을 활용하여 판매 데이터를 분석하고, 재고 및 물류 최적화를 위한 자동 발주 알고리즘을 구현합니다. 이를 통해 중소 유통업체의 재고 관리 비용을 30% 절감하고 운영 효율성을 극대화하는 것을 목표로 합니다.
+---
+
+이제 위 예시와 같은 형식으로, 주어진 질문에 대한 가상의 사업계획서 핵심 내용을 작성하세요:
 """
-        # ChatOpenAI는 .content가 있지만, Ollama는 문자열을 직접 반환
         response = self.llm.invoke(prompt)
-        if hasattr(response, 'content'):
-            hypothetical_doc = response.content
-        else:
-            hypothetical_doc = response
+        hypothetical_doc = response.content
             
         hyde_emb = self.embeddings.embed_query(hypothetical_doc)
         docs = self.vectorstore.similarity_search_by_vector(hyde_emb, k=5)
@@ -87,8 +91,8 @@ def get_vectorstore_path(file_path):
     
     # 파일명에서 확장자 제거하여 폴더명 생성
     file_name = os.path.splitext(os.path.basename(file_path))[0]
-    # 한글 및 특수문자 제거, 영문/숫자만 허용
-    safe_name = "".join(c for c in file_name if c.isascii() and c.isalnum() or c in (' ', '-', '_')).strip()
+    # 한글 및 특수문자 제거하여 폴더명 생성
+    safe_name = "".join(c for c in file_name if c.isalnum() or c in (' ', '-', '_')).strip()
     safe_name = safe_name.replace(' ', '_')  # 공백을 언더스코어로 변경
     safe_name = safe_name[:20]  # 길이 제한을 더 짧게
     
@@ -174,13 +178,9 @@ def ParseFirstFile(file_path):
     print(f"[{time.strftime('%H:%M:%S')}] 1단계: HWP 파일 로딩 중...")
     loader_start = time.time()
     try:
-        print(1)
         loader = HWPLoader(file_path)
-        print(2)
         docs = loader.load()
-        print(3)
         text = docs[0].page_content
-        print(text)
         loader_time = time.time() - loader_start
         print(f"[{time.strftime('%H:%M:%S')}] ✓ HWP 파일 로딩 완료 ({loader_time:.2f}초)")
         print(f"   - 추출된 텍스트 길이: {len(text)} 문자")
@@ -200,15 +200,11 @@ def ParseFirstFile(file_path):
         print(f"[{time.strftime('%H:%M:%S')}] ❌ 텍스트 청킹 실패: {e}")
         return {"error": f"텍스트 청킹 실패: {e}"}
 
-    # 3. 임베딩 및 벡터스토어 생성 (KURE-v1 모델 사용)
-    print(f"[{time.strftime('%H:%M:%S')}] 3단계: 임베딩 모델 로딩 중... (처음 실행 시 다운로드 시간이 오래 걸릴 수 있습니다)")
+    # 3. 임베딩 및 벡터스토어 생성 (OpenAIEmbeddings 사용)
+    print(f"[{time.strftime('%H:%M:%S')}] 3단계: 임베딩 모델 로딩 중...")
     embed_start = time.time()
     try:
-        embeddings = HuggingFaceEmbeddings(
-            model_name="nlpai-lab/KURE-v1",
-            model_kwargs={'device': 'cpu'},  # GPU 사용 시 'cuda'로 변경
-            encode_kwargs={'normalize_embeddings': True}
-        )
+        embeddings = OpenAIEmbeddings()
         embed_load_time = time.time() - embed_start
         print(f"[{time.strftime('%H:%M:%S')}] ✓ 임베딩 모델 로딩 완료 ({embed_load_time:.2f}초)")
     except Exception as e:
@@ -229,15 +225,11 @@ def ParseFirstFile(file_path):
     print(f"[{time.strftime('%H:%M:%S')}] 5단계: LLM 모델 준비 중...")
     llm_start = time.time()
     try:
-        # HyDE 리트리버용 OpenAI LLM
+        # HyDE 리트리버 및 분석용 OpenAI LLM
         print(f"[{time.strftime('%H:%M:%S')}]   - OpenAI 모델 로딩 중...")
-        hyde_llm = ChatOpenAI(temperature=0, model_name="gpt-3.5-turbo")
+        llm = ChatOpenAI(temperature=0, model_name="gpt-3.5-turbo")
         
-        # 실제 LLM 체인용 Ollama LLM
-        print(f"[{time.strftime('%H:%M:%S')}]   - Ollama 모델 로딩 중... (kanana3 모델 확인 중)")
-        ollama_llm = Ollama(model="kanana3")
-        
-        retriever = get_ensemble_retriever(hyde_llm, embeddings, vectorstore)
+        retriever = get_ensemble_retriever(llm, embeddings, vectorstore)
         llm_time = time.time() - llm_start
         print(f"[{time.strftime('%H:%M:%S')}] ✓ LLM 모델 준비 완료 ({llm_time:.2f}초)")
     except Exception as e:
@@ -247,44 +239,51 @@ def ParseFirstFile(file_path):
     # 5. 예시 쿼리로 리트리버 사용 (실제 사용에 맞게 수정)
     print(f"[{time.strftime('%H:%M:%S')}] 6단계: 문서 검색 중...")
     search_start = time.time()
-    try:
-        query = "이 문서의 기업명, 사업자 등록번호, 지원 과제 요약, 아이템 핵심 사항을 알려줘"
-        retrieved_docs = retriever.invoke(query)
-        combined_text = "\n".join([doc.page_content for doc in retrieved_docs])
-        search_time = time.time() - search_start
-        print(f"[{time.strftime('%H:%M:%S')}] ✓ 문서 검색 완료 ({search_time:.2f}초)")
-        print(f"   - 검색된 문서 수: {len(retrieved_docs)}개")
-    except Exception as e:
-        print(f"[{time.strftime('%H:%M:%S')}] ❌ 문서 검색 실패: {e}")
-        return {"error": f"문서 검색 실패: {e}"}
+    # try:
+    query = "이 문서의 기업명, 사업자 등록번호, 지원 과제 요약, 아이템 핵심 사항을 알려줘"
+    print(3)
+    retrieved_docs = retriever.invoke(query)
+    print(2)
+    combined_text = "\n".join([doc.page_content for doc in retrieved_docs])
+    print(1)
+    search_time = time.time() - search_start
+    print(f"[{time.strftime('%H:%M:%S')}] ✓ 문서 검색 완료 ({search_time:.2f}초)")
+    print(f"   - 검색된 문서 수: {len(retrieved_docs)}개")
+    # except Exception as e:
+    #     print(f"[{time.strftime('%H:%M:%S')}] ❌ 문서 검색 실패: {e}")
+    #     return {"error": f"문서 검색 실패: {e}"}
 
-    # 6. LLM 프롬프트 및 체인 실행 (Ollama LLM 사용)
+    # 6. LLM 프롬프트 및 체인 실행 (OpenAI LLM 사용)
     print(f"[{time.strftime('%H:%M:%S')}] 7단계: LLM 분석 중... (가장 오래 걸리는 단계)")
     analysis_start = time.time()
     try:
         # LLMChain 대신 직접 invoke 사용
         prompt_text = f"""
-당신은 문서 분석 전문가입니다. 아래 텍스트에서 요청된 정보를 정확히 추출하여 JSON 형식으로만 응답해야 합니다.
+당신은 대한민국 정부 지원 사업계획서 분석 전문가입니다. 제공된 사업계획서 텍스트에서 다음 항목들을 매우 신중하고 정확하게 추출하여 JSON 형식으로 응답해 주세요.
 
-중요: 반드시 JSON 형식으로만 응답하세요. 다른 설명이나 텍스트는 포함하지 마세요.
+**지침:**
+1.  **정확성:** 주어진 텍스트에 명시적으로 언급된 정보만 추출하세요. 추측하거나 정보를 만들어내지 마세요.
+2.  **형식:** 반드시 지정된 JSON 형식으로만 응답해야 합니다. 다른 설명이나 추가 텍스트는 절대 포함하지 마세요.
+3.  **빈 값 처리:** 만약 텍스트에서 특정 정보를 찾을 수 없다면, 해당 필드의 값으로 빈 문자열("")을 사용하세요.
+4.  **세부 항목별 힌트:**
+    *   **기관명:** '신청기관', '주관기관' 등의 키워드 주변을 확인하세요.
+    *   **담당자명:** '담당자', '책임자' 등의 키워드와 함께 나오는 이름을 찾으세요.
+    *   **연락처:** '연락처', '전화', '핸드폰', 'HP' 등의 키워드와 함께 나오는 전화번호를 찾으세요.
+    *   **기업명:** '기업명', '회사명', '창업기업명' 등의 키워드를 찾아보세요. 보통 표의 형태로 제공될 수 있습니다.
+    *   **사업자번호:** '사업자등록번호' 키워드와 함께 나오는 'XXX-XX-XXXXX' 형식의 번호를 찾으세요.
+    *   **대표자명:** '대표자', '대표' 키워드와 함께 나오는 이름을 찾으세요.
+    *   **연락처1 (대표자 연락처):** 대표자의 연락처를 찾아보세요. '연락처', '핸드폰' 등으로 표시될 수 있습니다.
+    *   **연락처2 (담당자 연락처):** 담당자의 연락처를 찾아보세요. '연락처', '핸드폰' 등으로 표시될 수 있습니다.
+    *   **지원과제명:** '과제명', '사업명', '아이템명' 등의 키워드로 시작하는 긴 제목을 찾으세요.
+    *   **아이템:** '개발하고자 하는 아이템', '주요 아이템' 등 과제명을 요약한 핵심 기술 또는 제품명을 찾으세요.
+    *   **추천사유:** 문서 전체 내용을 바탕으로, 이 과제가 왜 필요한지, 어떤 문제를 해결하는지, 그리고 어떤 기술적/사회적 가치가 있는지를 1~2문장으로 요약하여 추천 사유를 작성하세요.
 
-추출할 정보:
-- 기관명
-- 담당자명
-- 연락처
-- 기업명
-- 사업자번호
-- 대표자명
-- 연락처1
-- 연락처2
-- 지원과제명
-- 아이템
-- 추천사유
-
-분석할 텍스트:
+**분석할 텍스트:**
+---
 {combined_text}
+---
 
-응답 형식 (JSON만):
+**응답 형식 (JSON만):**
 {{
     "기관명": "추출된 기관명 또는 빈 문자열",
     "담당자명": "추출된 담당자명 또는 빈 문자열",
@@ -296,21 +295,10 @@ def ParseFirstFile(file_path):
     "연락처2": "추출된 연락처2 또는 빈 문자열",
     "지원과제명": "추출된 지원과제명 또는 빈 문자열",
     "아이템": "추출된 아이템 또는 빈 문자열",
-    "추천사유": "추출된 추천사유 또는 빈 문자열"
+    "추천사유": "추천 사유 요약"
 }}
-
-# 주의사항:
-# 1. JSON 형식만 출력하세요
-# 2. 설명이나 추가 텍스트는 절대 포함하지 마세요
-# 3. 정보를 찾을 수 없으면 빈 문자열("")로 설정하세요
-# 4. JSON 구문이 정확해야 합니다
-# 5. 따옴표와 쉼표를 정확히 사용하세요
-
 """
-
-
-        # Ollama LLM은 문자열을 직접 반환하므로 .content 제거
-        result = ollama_llm.invoke(prompt_text)
+        result = llm.invoke(prompt_text).content
         analysis_time = time.time() - analysis_start
         print(f"[{time.strftime('%H:%M:%S')}] ✓ LLM 분석 완료 ({analysis_time:.2f}초)")
     except Exception as e:
@@ -320,9 +308,7 @@ def ParseFirstFile(file_path):
     # 7. 결과 반환 (문자열을 딕셔너리로 변환)
     print(f"[{time.strftime('%H:%M:%S')}] 8단계: 결과 처리 중...")
     process_start = time.time()
-    print(f"[{time.strftime('%H:%M:%S')}] ⚙️ LLM 원본 응답:\n{result}")
     import json
-    
     import re
     
     try:
@@ -366,7 +352,7 @@ def ParseFirstFile(file_path):
 
 def main(file_path):
     import sys
-    print('파일 경로', file_path)
+
     # 오래된 벡터스토어 정리 (선택사항)
     # cleanup_old_vectorstores()
 
